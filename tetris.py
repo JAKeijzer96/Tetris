@@ -71,8 +71,10 @@ class Tetris():
 									['*']],
 							'T':[['*', '*', '*'] ,
 									['', '*', '']]}
-			
-		self.parent.bind('<Down>', self.down)
+		
+		self.parent.bind('<Down>', self.shift)
+		self.parent.bind('<Left>', self.shift)
+		self.parent.bind('<Right>', self.shift)
 
 	def tick(self):
 		if not self.piece_is_active:
@@ -81,27 +83,69 @@ class Tetris():
 		
 		#self.parent.after(self.tickrate, self.tick)
 	
-	def down(self, event=None):
-		if not self.piece_is_active:
+	def shift(self, event=None):
+		if not self.piece_is_active:		# We do not want to move settled pieces
 			return
+		# Retrieve information about the active piece
 		row = self.active_piece['row']
 		column = self.active_piece['column']
 		length = len(self.active_piece['shape'])
 		width = len(self.active_piece['shape'][0])
-		# Use event.keysym for event direction
-		if row + length >= self.board_height:
+		# The function may be called by tick with no event, or with a button press event
+		# event.keysym is the name of the pressed button
+		direction = (event and event.keysym) or 'Down'
+		# If the piece is at the bottom of the board, settle
+		if direction == 'Down' and row + length >= self.board_height:
 			self.settle()
 			return
-		self.board[row][column:column+width] = [''] * width
-		self.active_piece['row'] += 1
-		row += 1
+		elif (direction == 'Left' and not column) or (
+			direction == 'Right' and column+width >= self.board_width):
+			# We do not want to move left past the first column
+			# or move right past the right-most column
+			return
+		if direction == 'Down':
+			# Clear the row the piece was on before and increment row
+			self.board[row][column:column+width] = [''] * width
+			row += 1
+			self.active_piece['row'] = row
+		else:
+			if direction == 'Left':
+				# Decrement piece's column
+				current_column = column+width
+				column -= 1
+				self.active_piece['column'] = column
+			elif direction == 'Right':
+				# Increment piece's column
+				current_column = column-1
+				column += 1
+				self.active_piece['column'] = column
+			# Check that the current_column is actually within the board space,
+			# then blank the outer column of the previous position of the shape
+			# by iterating over the rows
+			if 0 <= current_column < self.board_width:
+				for idx in range(row, row+length):
+					self.board[idx][current_column] = ''
+		# Iterate over the rows to assign squares of the shape
+		# to the correct new value on the board
 		for squares, current_row in zip(self.active_piece['shape'],
 													range(row, row+length)):
 			self.board[current_row][column:column+width] = squares
+		# Move the visual representation of the piece on the canvas
 		for idx,coords_idx in zip(self.active_piece['piece'], range(len(self.active_piece['coords']))):
 			x1,y1,x2,y2 = self.active_piece['coords'][coords_idx]
-			y1 += self.square_width
-			y2 += self.square_width
+			if direction == 'Down':
+				# Increment y to move the representation down
+				y1 += self.square_width
+				y2 += self.square_width
+			elif direction == 'Left':
+				# Decrement x to move the piece left
+				x1 -= self.square_width
+				x2 -= self.square_width
+			elif direction == 'Right':
+				# Increment x to move the piece right
+				x1 += self.square_width
+				x2 += self.square_width
+			# Update the active_piece coords to their new values
 			self.active_piece['coords'][coords_idx] = x1,y1,x2,y2
 			self.canvas.coords(idx, self.active_piece['coords'][coords_idx])
 			
@@ -116,9 +160,11 @@ class Tetris():
 		print('clonk')
 
 	def spawn(self):
+		# Select a random shape and randomly rotate it
 		shape = self.shapes[random.choice('SZJLOIT')]
 		shape = rot_arr(shape, random.choice((0,90,180,270)))
 		width = len(shape[0])
+		# Place it in the middle of the board
 		start_column = (10-width)//2
 		self.active_piece = {'shape':shape, 'piece':[], 'row':0, 'column':start_column, 'coords':[]}
 		for y, row in enumerate(shape):
