@@ -194,6 +194,7 @@ class Tetris():
 			print(r)
 		self.parent.after(self.tickrate, self.spawn())
 
+
 	def spawn(self):
 		self.piece_is_active = True
 		# Select a random shape and randomly rotate it
