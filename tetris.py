@@ -36,6 +36,7 @@ class Shape():
 
 class Tetris():
 	def __init__(self, parent):
+		parent.title('Tetris')
 		self.parent = parent
 		self.board_width = 10
 		self.board_height = 24
@@ -91,45 +92,72 @@ class Tetris():
 		column = self.active_piece['column']
 		length = len(self.active_piece['shape'])
 		width = len(self.active_piece['shape'][0])
-		# The function may be called by tick with no event, or with a button press event
-		# event.keysym is the name of the pressed button
+		# The function may be called by tick with no event, in which case
+		# the piece will move down, or it may be called by a button press event
+		# in which case direction is will be the name of the button
 		direction = (event and event.keysym) or 'Down'
 		# If the piece is at the bottom of the board, settle
-		if direction == 'Down' and row + length >= self.board_height:
-			self.settle()
-			return
-		elif (direction == 'Left' and not column) or (
-			direction == 'Right' and column+width >= self.board_width):
-			# We do not want to move left past the first column
-			# or move right past the right-most column
-			return
 		if direction == 'Down':
-			# Clear the row the piece was on before and increment row
-			self.board[row][column:column+width] = [''] * width
+			if row + length >= self.board_height:
+				self.settle()
+				return		
+			row_temp = row+1 # temp value
+			column_temp = column # temp value
+		elif direction == 'Left':
+			if not column:
+				return
+			row_temp = row
+			column_temp = column - 1
+		elif direction == 'Right':
+			if column+width >= self.board_width:
+				# We do not want to move left past the first column
+				# or move right past the right-most column
+				return
+			row_temp = row
+			column_temp = column + 1
+		# Looking ahead to see if there is already a piece at the possible new location
+		# for the current active_piece
+		# The first zip returns tuples of (row_number, [strings of the shape in that row])
+		for row_number, squares in zip(range(row_temp, row_temp+length),
+													self.active_piece['shape']):
+			# The second zip returns tuples of (column_number, string of the shape in that (column,row) coordinate)
+			for column_number, square in zip(range(column_temp, column_temp+width), squares):
+				# If there's already something there, do not overwrite it with a possible
+				# empty string in the rectangular 2D array containing the shape
+				if square and self.board[row_number][column_number] == 'x':
+					if direction == 'Down':
+						self.settle()
+					return
+		# r = .. would reassign a local variable
+		# r[:] = .. takes all elements of the object
+		# Removing the shape from the board by iterating over the rows
+		# and blanking the cell if it was previously occupied by the shape,
+		# otherwise (e.g. settled piece) it remains as it was
+		for r in self.board:
+			r[:] = ['' if cell=='*' else cell for cell in r]
+		
+		# Increment the piece's row
+		if direction == 'Down':
 			row += 1
 			self.active_piece['row'] = row
-		else:
-			if direction == 'Left':
-				# Decrement piece's column
-				current_column = column+width
-				column -= 1
-				self.active_piece['column'] = column
-			elif direction == 'Right':
-				# Increment piece's column
-				current_column = column-1
-				column += 1
-				self.active_piece['column'] = column
-			# Check that the current_column is actually within the board space,
-			# then blank the outer column of the previous position of the shape
-			# by iterating over the rows
-			if 0 <= current_column < self.board_width:
-				for idx in range(row, row+length):
-					self.board[idx][current_column] = ''
-		# Iterate over the rows to assign squares of the shape
-		# to the correct new value on the board
-		for squares, current_row in zip(self.active_piece['shape'],
-													range(row, row+length)):
-			self.board[current_row][column:column+width] = squares
+		elif direction == 'Left':
+			# Decrement piece's column
+			column -= 1
+			self.active_piece['column'] = column
+		elif direction == 'Right':
+			# Increment piece's column
+			column += 1
+			self.active_piece['column'] = column
+		# Iterate over the rows and columns to put the shape
+		# on the board again on the new updated position
+		# The first zip returns tuples of (row_number, [strings of the shape in that row])
+		for row_number, squares in zip(range(row, row+length),self.active_piece['shape']):
+			# The second zip returns tuples of (column_number, string of the shape in that row, column coordinate)
+			for column_number, square in zip(range(column, column+width), squares):
+				# If the 2D array representation of the shape has a non-empty string
+				# at the current row_number, column_number coordinate, place it on the board
+				if square:
+					self.board[row_number][column_number] = square
 		# Move the visual representation of the piece on the canvas
 		for idx,coords_idx in zip(self.active_piece['piece'], range(len(self.active_piece['coords']))):
 			x1,y1,x2,y2 = self.active_piece['coords'][coords_idx]
@@ -148,7 +176,9 @@ class Tetris():
 			# Update the active_piece coords to their new values
 			self.active_piece['coords'][coords_idx] = x1,y1,x2,y2
 			self.canvas.coords(idx, self.active_piece['coords'][coords_idx])
-			
+		
+		for row in self.board:
+			print(row)
 
 	def lateral(self, direction):
 		pass
@@ -158,6 +188,11 @@ class Tetris():
 		# size is 10x20, extra space giving 10x24
 		self.piece_is_active = not self.piece_is_active
 		print('clonk')
+		# Changing the notation of the previously active piece to
+		# denote that it has now settled
+		for r in self.board:
+			r[:] = ['x' if cell=='*' else cell for cell in r]
+			print(r)
 
 	def spawn(self):
 		# Select a random shape and randomly rotate it
@@ -168,9 +203,10 @@ class Tetris():
 		start_column = (10-width)//2
 		self.active_piece = {'shape':shape, 'piece':[], 'row':0, 'column':start_column, 'coords':[]}
 		for y, row in enumerate(shape):
+			# Spawn in the shape
 			self.board[y][start_column:start_column+width] = shape[y]
-			for x, column in enumerate(row, start=start_column):
-				if column:
+			for x, cell in enumerate(row, start=start_column):
+				if cell:
 					self.active_piece['coords'].append((self.square_width*x,
 																self.square_width*y,
 																self.square_width*(x+1),
@@ -178,9 +214,6 @@ class Tetris():
 					self.active_piece['piece'].append(
 						self.canvas.create_rectangle(self.active_piece['coords'][-1])
 					)
-					
-		for row in self.board:
-			print(row)
 
 	def new(self):
 		pass
