@@ -80,7 +80,6 @@ class Tetris():
 	def tick(self):
 		if not self.piece_is_active:
 			self.spawn()
-			self.piece_is_active = not self.piece_is_active
 		
 		#self.parent.after(self.tickrate, self.tick)
 	
@@ -186,15 +185,17 @@ class Tetris():
 	def settle(self):
 		pass # this will check for loss by checking the height of the board content
 		# size is 10x20, extra space giving 10x24
-		self.piece_is_active = not self.piece_is_active
+		self.piece_is_active = False
 		print('clonk')
 		# Changing the notation of the previously active piece to
 		# denote that it has now settled
 		for r in self.board:
 			r[:] = ['x' if cell=='*' else cell for cell in r]
 			print(r)
+		self.parent.after(self.tickrate, self.spawn())
 
 	def spawn(self):
+		self.piece_is_active = True
 		# Select a random shape and randomly rotate it
 		shape = self.shapes[random.choice('SZJLOIT')]
 		shape = rot_arr(shape, random.choice((0,90,180,270)))
