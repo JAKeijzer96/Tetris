@@ -122,7 +122,7 @@ class Tetris():
 			r[:] = ['' if cell=='*' else cell for cell in r]
 
 
-		# Put shape on the board
+		# Put shape on the board and piece on the canvas
 		for row_number, squares in zip(range(row, row+length), shape):
 			for column_number, square in zip(range(column, column+width), squares):
 				if square:
@@ -142,7 +142,11 @@ class Tetris():
 
 
 	def rotate(self, event=None):
+		# Don't rotate inactive pieces
 		if not self.piece_is_active:
+			return
+		# Don't rotate squares
+		if len(self.active_piece.shape) == len(self.active_piece.shape[0]):
 			return
 		# Retrieve information about the active piece
 		row = self.active_piece.row
@@ -157,16 +161,22 @@ class Tetris():
 		if direction in {'q', 'Q'}:
 			# rotate left/anticlockwise
 			shape = rot_arr(self.active_piece.shape, -90)
+			# 4 is a magic number, number of sides on a rectangle
+			rotation_index = (self.active_piece.rotation_index - 1) % 4
+			rx, ry = self.active_piece.rotation[rotation_index]
+			rotation_offsets = -rx, -ry
 		elif direction in {'e', 'E', 'Up', 'w', 'W'}:
 			# rotate right/clockwise
 			shape = rot_arr(self.active_piece.shape, 90)
+			rotation_index = self.active_piece.rotation_index
+			rotation_offsets = self.active_piece.rotation[rotation_index]
+			rotation_index = (rotation_index + 1) % 4
 
 		length = len(shape) # length of new shape
 		width = len(shape[0]) # width of new shapes
 		row = y_center - length//2 # row of new shape
 		column = x_center - width//2 # column of new shape
-		x_correction, y_correction = self.active_piece.rotation[
-													self.active_piece.rotation_index]
+		x_correction, y_correction = rotation_offsets
 		row += y_correction
 		column += x_correction
 
@@ -174,10 +184,7 @@ class Tetris():
 		if not success:
 			return
 
-		self.active_piece.shape = shape
-		self.active_piece.rotation_index = ((self.active_piece.rotation_index+1)%
-																len(self.active_piece.rotation))
-		
+		self.active_piece.rotation_index = rotation_index
 
 	def tick(self):
 		if not self.piece_is_active:
@@ -251,15 +258,19 @@ class Tetris():
 					)
 		self.active_piece.rotation_index = 0
 		# cycle of coordinates to move the piece slightly each time it rotates
-		if len(shape) == len(shape[0]): # square
-			self.active_piece.rotation = [(0,0)]
-		else: # tall or wide shape
+		# to make the rotation feel more natural
+		if 3 in (len(shape), len(shape[0])): # 2x3 or 3x2 shape
 			self.active_piece.rotation = [(0,0),
-														(1, 0),
-														(-1, 1),
-														(0, -1)]
+													(1, 0),
+													(-1, 1),
+													(0, -1)]
+		else: # I shape
+			self.active_piece.rotation = [(1,-1),
+													(0, 1),
+													(0,0),
+													(-1, 0)]	
 		if len(shape) < len(shape[0]):
-			self.active_piece.rotation_index += 1	#rotation_index######################################################################
+			self.active_piece.rotation_index += 1
 		
 		self.print_board()
 
