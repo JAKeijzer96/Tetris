@@ -20,19 +20,24 @@ try:
 	import pygame as pg
 except:
 	print('The pygame module cannot be found or is not installed')
-import random
 try:
 	from matrix_rotation import rotate_array as rot_arr
 except:
 	print('The matrix_rotation module cannot be found or is not installed'\
 		'The original code can be found on https://github.com/TigerhawkT3/matrix_rotation')
+import random
 
 class Shape():
-	def __init__(self, shape, piece):
+	def __init__(self, shape, piece, row, column, coords):
 		'''
 		Shape is a 2D array presentation with '*'
 		piece is a 2D array with references to canvas child objects
 		'''
+		self.shape = shape
+		self.piece = piece
+		self.row = row
+		self.column = column
+		self.coords = coords
 
 class Tetris():
 	def __init__(self, parent):
@@ -82,28 +87,68 @@ class Tetris():
 		self.parent.bind('<Right>', self.shift)
 		self.parent.bind('d', self.shift)
 		self.parent.bind('D', self.shift)
+		self.parent.bind('<Up>', self.rotate)
+		self.parent.bind('w', self.rotate)
+		self.parent.bind('W', self.rotate)
 		self.parent.bind('q', self.rotate)
 		self.parent.bind('Q', self.rotate)
 		self.parent.bind('e', self.rotate)
 		self.parent.bind('E', self.rotate)
 
-	def tick(self):
-		if not self.piece_is_active:
-			self.spawn()
-		
-		#self.parent.after(self.tickrate, self.tick)
-	
+	def print_board(self):
+		for row in self.board:
+			print(*(cell or ' ' for cell in row), sep='')
+
+
+	def check_and_move(self, shape, row, column, length, width):
+		# Check wheter we may rotate a piece or if the space is already occupied
+		# or the intented space is off the board
+		for row_number, squares in zip(range(row, row+length), shape):
+			for column_number, square in zip(range(column, column+width), squares):
+				if (row_number not in range(self.board_height)
+					or column_number not in range(self.board_width)
+					or (square and self.board[row_number][column_number] == 'x')):
+						return
+
+
+		square_idxs = iter(range(4)) # iterator of 4 indices
+
+		# r = .. would reassign a local variable
+		# r[:] = .. takes all elements of the object		
+		# Removing the shape from the board by iterating over the rows
+		# and blanking the cell if it was previously occupied by the shape,
+		# otherwise (e.g. settled piece) it remains as it was
+		for r in self.board:
+			r[:] = ['' if cell=='*' else cell for cell in r]
+
+
+		# Put shape on the board
+		for row_number, squares in zip(range(row, row+length), shape):
+			for column_number, square in zip(range(column, column+width), squares):
+				if square:
+					self.board[row_number][column_number] = square
+					square_idx = next(square_idxs)
+					coords = (column_number * self.square_width,
+										row_number * self.square_width,
+										(column_number+1)*self.square_width,
+										(row_number+1)*self.square_width)
+					self.active_piece.coords[square_idx] = coords
+					self.canvas.coords(self.active_piece.piece[square_idx], coords)
+		self.active_piece.row = row
+		self.active_piece.column = column
+		self.active_piece.shape = shape
+		self.print_board()
+		return True
+
+
 	def rotate(self, event=None):
-		if not self.active_piece:
+		if not self.piece_is_active:
 			return
-
-
-
 		# Retrieve information about the active piece
-		row = self.active_piece['row']
-		column = self.active_piece['column']
-		length = len(self.active_piece['shape'])
-		width = len(self.active_piece['shape'][0])
+		row = self.active_piece.row
+		column = self.active_piece.column
+		length = len(self.active_piece.shape)
+		width = len(self.active_piece.shape[0])
 		# find the coordinates of the center of the old shape
 		x_center = column + width//2
 		y_center = row + length//2
@@ -111,52 +156,35 @@ class Tetris():
 		direction = event.keysym
 		if direction in {'q', 'Q'}:
 			# rotate left/anticlockwise
-			shape = rot_arr(self.active_piece['shape'], -90)
-		elif direction in {'e', 'E'}:
+			shape = rot_arr(self.active_piece.shape, -90)
+		elif direction in {'e', 'E', 'Up', 'w', 'W'}:
 			# rotate right/clockwise
-			shape = rot_arr(self.active_piece['shape'], 90)
+			shape = rot_arr(self.active_piece.shape, 90)
 
 		length = len(shape) # length of new shape
 		width = len(shape[0]) # width of new shapes
 		row = y_center - length//2 # row of new shape
 		column = x_center - width//2 # column of new shape
+		x_correction, y_correction = self.active_piece.rotation[
+													self.active_piece.rotation_index]
+		row += y_correction
+		column += x_correction
 
-		# rotation prefers upper left corner,
-		# does not always feel natural
+		success = self.check_and_move(shape, row, column, length, width)
+		if not success:
+			return
 
-		# Check wheter we may rotate a piece or if the space is already occupied
-		for row_number, squares in zip(range(row, row+length), shape):
-			for column_number, square in zip(range(column, column+width), squares):
-				if square and self.board[row_number][column_number] == 'x':
-					return
+		self.active_piece.shape = shape
+		self.active_piece.rotation_index = ((self.active_piece.rotation_index+1)%
+																len(self.active_piece.rotation))
+		
 
-		self.active_piece['shape'] = shape
-
-		# Canvas stuff
-		# Finding the start pixels to draw the shape
-		x_start = min(coord for tup in self.active_piece['coords'] for coord in (tup[0], tup[2])) # minimum x coord
-		y_start = min(coord for tup in self.active_piece['coords'] for coord in (tup[1], tup[3])) # minimum y coord
-		squares = iter(range(4)) # iterator of 4 indices
-		for row_coord, shape_row in zip(range(y_start,
-													(y_start+1)*self.square_width+1,
-													self.square_width),
-												shape):
-			for column_coord, cell in zip(range(x_start,
-													(x_start+1)*self.square_width+1,
-													self.square_width),
-												shape_row):
-				# If there is a shape, change the coordinates for the next piece
-				if cell:
-					square_idx = next(squares)
-					coords = (column_coord,
-										row_coord,
-										column_coord+self.square_width,
-										row_coord+self.square_width)
-					self.active_piece['coords'][square_idx] = coords
-					self.canvas.coords(self.active_piece['piece'][square_idx], coords)
-
-
-
+	def tick(self):
+		if not self.piece_is_active:
+			self.spawn()
+		
+		#self.parent.after(self.tickrate, self.tick)
+	
 	def shift(self, event=None):
 		down = {'Down', 's', 'S'}
 		left = {'Left', 'a', 'A'}
@@ -164,94 +192,30 @@ class Tetris():
 		if not self.piece_is_active:		# We do not want to move settled pieces
 			return
 		# Retrieve information about the active piece
-		row = self.active_piece['row']
-		column = self.active_piece['column']
-		length = len(self.active_piece['shape'])
-		width = len(self.active_piece['shape'][0])
+		row = self.active_piece.row
+		column = self.active_piece.column
+		length = len(self.active_piece.shape)
+		width = len(self.active_piece.shape[0])
 		# The function may be called by tick with no event, in which case
 		# the piece will move down, or it may be called by a button press event
 		# in which case direction is will be the name of the button
 		direction = (event and event.keysym) or 'Down'
 		# If the piece is at the bottom of the board, settle
-		if direction in down:
-			if row + length >= self.board_height:
-				self.settle()
-				return		
+		if direction in down:	
 			row_temp = row+1 # temp value
 			column_temp = column # temp value
 		elif direction in left:
-			if not column:
-				return
 			row_temp = row
 			column_temp = column - 1
 		elif direction in right:
-			if column+width >= self.board_width:
-				# We do not want to move left past the first column
-				# or move right past the right-most column
-				return
 			row_temp = row
 			column_temp = column + 1
-		# Checks for possible collisions with existing pieces
-		# The first zip returns tuples of (row_number, [strings of the shape in that row])
-		for row_number, squares in zip(range(row_temp, row_temp+length), self.active_piece['shape']):
-			# The second zip returns tuples of (column_number, string of the shape in that (column,row) coordinate)
-			for column_number, square in zip(range(column_temp, column_temp+width), squares):
-				# If we're moving down on top of a settled piece, settle
-				if square and self.board[row_number][column_number] == 'x':
-					if direction in down:
-						self.settle()
-					return
-		# r = .. would reassign a local variable
-		# r[:] = .. takes all elements of the object
-		# Removing the shape from the board by iterating over the rows
-		# and blanking the cell if it was previously occupied by the shape,
-		# otherwise (e.g. settled piece) it remains as it was
-		for r in self.board:
-			r[:] = ['' if cell=='*' else cell for cell in r]
-		
-		# Increment the piece's row
-		if direction in down:
-			row += 1
-			self.active_piece['row'] = row
-		elif direction in left:
-			# Decrement piece's column
-			column -= 1
-			self.active_piece['column'] = column
-		elif direction in right:
-			# Increment piece's column
-			column += 1
-			self.active_piece['column'] = column
-		# Iterate over the rows and columns to put the shape
-		# on the board again on the new updated position
-		# The first zip returns tuples of (row_number, [strings of the shape in that row])
-		for row_number, squares in zip(range(row, row+length),self.active_piece['shape']):
-			# The second zip returns tuples of (column_number, string of the shape in that row, column coordinate)
-			for column_number, square in zip(range(column, column+width), squares):
-				# If the 2D array representation of the shape has a non-empty string
-				# at the current (row_number,column_number) coordinate, place it on the board
-				if square:
-					self.board[row_number][column_number] = square
-		# Move the visual representation of the piece on the canvas
-		for idx,coords_idx in zip(self.active_piece['piece'], range(len(self.active_piece['coords']))):
-			x1,y1,x2,y2 = self.active_piece['coords'][coords_idx]
-			if direction in down:
-				# Increment y to move the representation down
-				y1 += self.square_width
-				y2 += self.square_width
-			elif direction in left:
-				# Decrement x to move the piece left
-				x1 -= self.square_width
-				x2 -= self.square_width
-			elif direction in right:
-				# Increment x to move the piece right
-				x1 += self.square_width
-				x2 += self.square_width
-			# Update the active_piece coords to their new values
-			self.active_piece['coords'][coords_idx] = x1,y1,x2,y2
-			self.canvas.coords(idx, self.active_piece['coords'][coords_idx])
-		
-		for row in self.board:
-			print(*(cell or '' for cell in row))
+
+		success = self.check_and_move(self.active_piece.shape, row_temp, column_temp, length, width)
+
+		if direction in down and not success:
+			self.settle()
+			return
 
 	def settle(self):
 		pass # this will check for loss by checking the height of the board content
@@ -272,20 +236,32 @@ class Tetris():
 		width = len(shape[0])
 		# Place it in the middle of the board
 		start_column = (10-width)//2
-		self.active_piece = {'shape':shape, 'piece':[], 'row':0, 'column':start_column, 'coords':[]}
+		self.active_piece = Shape(shape, [], 0, start_column, [])
 		for y, row in enumerate(shape):
 			# Spawn in the shape
 			self.board[y][start_column:start_column+width] = shape[y]
 			for x, cell in enumerate(row, start=start_column):
 				if cell:
-					self.active_piece['coords'].append((self.square_width*x,
+					self.active_piece.coords.append((self.square_width*x,
 																self.square_width*y,
 																self.square_width*(x+1),
 																self.square_width*(y+1)))
-					self.active_piece['piece'].append(
-						self.canvas.create_rectangle(self.active_piece['coords'][-1])
+					self.active_piece.piece.append(
+						self.canvas.create_rectangle(self.active_piece.coords[-1])
 					)
-
+		self.active_piece.rotation_index = 0
+		# cycle of coordinates to move the piece slightly each time it rotates
+		if len(shape) == len(shape[0]): # square
+			self.active_piece.rotation = [(0,0)]
+		else: # tall or wide shape
+			self.active_piece.rotation = [(0,0),
+														(1, 0),
+														(-1, 1),
+														(0, -1)]
+		if len(shape) < len(shape[0]):
+			self.active_piece.rotation_index += 1	#rotation_index######################################################################
+		
+		self.print_board()
 
 	def new(self):
 		pass
