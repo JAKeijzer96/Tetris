@@ -77,7 +77,13 @@ class Tetris():
 									['*']],
 							'T':[['*', '*', '*'] ,
 									['', '*', '']]}
-		
+		self.colors = {'S':'green',
+							'Z':'yellow',
+							'J':'turquoise',
+							'L':'orange',
+							'O':'blue',
+							'I':'red',
+							'T':'violet'}		
 		self.parent.bind('<Down>', self.shift)
 		self.parent.bind('s', self.shift)
 		self.parent.bind('S', self.shift)
@@ -238,7 +244,8 @@ class Tetris():
 	def spawn(self):
 		self.piece_is_active = True
 		# Select a random shape and randomly rotate it
-		shape = self.shapes[random.choice('SZJLOIT')]
+		key = random.choice('SZJLOIT')
+		shape = self.shapes[key]
 		shape = rot_arr(shape, random.choice((0,90,180,270)))
 		width = len(shape[0])
 		# Place it in the middle of the board
@@ -254,7 +261,9 @@ class Tetris():
 																self.square_width*(x+1),
 																self.square_width*(y+1)))
 					self.active_piece.piece.append(
-						self.canvas.create_rectangle(self.active_piece.coords[-1])
+						self.canvas.create_rectangle(self.active_piece.coords[-1],
+																fill=self.colors[key],
+																width=3)
 					)
 		self.active_piece.rotation_index = 0
 		# cycle of coordinates to move the piece slightly each time it rotates
