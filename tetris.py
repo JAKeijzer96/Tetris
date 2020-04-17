@@ -28,11 +28,12 @@ except:
 import random
 
 class Shape():
-	def __init__(self, shape, piece, row, column, coords):
+	def __init__(self, key, shape, piece, row, column, coords):
 		'''
 		Shape is a 2D array presentation with '*'
 		piece is a 2D array with references to canvas child objects
 		'''
+		self.key = key
 		self.shape = shape
 		self.piece = piece
 		self.row = row
@@ -45,20 +46,10 @@ class Tetris():
 		self.parent = parent
 		self.board_width = 10
 		self.board_height = 24
-		self.board = [['' for column in range(self.board_width)]
-							for row in range(self.board_height)]
-		self.field = [[None for column in range(self.board_width)]
-							for row in range(self.board_height)]
 		self.canvas_width = 300
 		self.canvas_height = 720
 		self.square_width = self.canvas_width//10
-		self.canvas = tk.Canvas(root, width=self.canvas_width, height=self.canvas_height)
-		self.canvas.grid(row=0, column=0)
-		self.seperator = self.canvas.create_line(0,self.canvas_height//6,
-													self.canvas_width, self.canvas_height//6, width=2)
-		self.tickrate = 1000
-		self.piece_is_active = False
-		self.parent.after(self.tickrate, self.tick)
+		
 		self.shapes = {'S':[['*', ''],
 									['*', '*'],
 									['', '*']],
@@ -85,7 +76,7 @@ class Tetris():
 							'L':'orange',
 							'O':'blue',
 							'I':'red',
-							'T':'violet'}		
+							'T':'violet'}
 		self.parent.bind('<Down>', self.shift)
 		self.parent.bind('s', self.shift)
 		self.parent.bind('S', self.shift)
@@ -103,14 +94,42 @@ class Tetris():
 		self.parent.bind('e', self.rotate)
 		self.parent.bind('E', self.rotate)
 		self.parent.bind('<space>', self.snap)
+		
+		self.draw_board()
+
+	def draw_board(self):
+		self.board = [['' for column in range(self.board_width)]
+							for row in range(self.board_height)]
+		self.field = [[None for column in range(self.board_width)]
+							for row in range(self.board_height)]
+		self.canvas = tk.Canvas(root, width=self.canvas_width, height=self.canvas_height)
+		self.canvas.grid(row=0, column=0, rowspan=2)
+		self.horizontal_seperator = self.canvas.create_line(0,self.canvas_height//6,
+													self.canvas_width, self.canvas_height//6, width=2)
+		self.vertical_seperator = self.canvas.create_line(self.canvas_width, 0,
+													self.canvas_width, self.canvas_height, width=2)
+		self.preview_canvas = tk.Canvas(root,
+												width=5*self.square_width,
+												height=5*self.square_width)
+		self.preview_canvas.grid(row=0, column=1)	
+		self.score_label = tk.Label(root,
+											text='Score:\n0',
+											width=20,
+											height=5)
+		self.score_label.grid(row=1, column=1)
+		self.score = 0
+		self.tickrate = 1000
+		self.piece_is_active = False
+		self.preview()
+		self.parent.after(self.tickrate, self.tick)
+
 
 	def print_board(self):
 		for row in self.board:
 			print(*(cell or ' ' for cell in row), sep='')
 
-
-	def check_and_move(self, shape, row, column, length, width):
-		# Check wheter we may rotate a piece or if the space is already occupied
+	def check(self, shape, row, column, length, width):
+		# Check wheter we may rotate or move a piece or if the space is already occupied
 		# or the intented space is off the board
 		for row_number, squares in zip(range(row, row+length), shape):
 			for column_number, square in zip(range(column, column+width), squares):
@@ -118,8 +137,9 @@ class Tetris():
 					or column_number not in range(self.board_width)
 					or (square and self.board[row_number][column_number] == 'x')):
 						return
+		return True
 
-
+	def move(self, shape, row, column, length, width):
 		square_idxs = iter(range(4)) # iterator of 4 indices
 
 		# r = .. would reassign a local variable
@@ -129,7 +149,6 @@ class Tetris():
 		# otherwise (e.g. settled piece) it remains as it was
 		for r in self.board:
 			r[:] = ['' if cell=='*' else cell for cell in r]
-
 
 		# Put shape on the board and piece on the canvas
 		for row_number, squares in zip(range(row, row+length), shape):
@@ -148,6 +167,13 @@ class Tetris():
 		self.active_piece.shape = shape
 		self.print_board()
 		return True
+
+
+	def check_and_move(self, shape, row, column, length, width):
+		if self.check(shape, row, column, length, width):
+			self.move(shape, row, column, length, width)
+			return True
+
 
 
 	def rotate(self, event=None):
@@ -198,7 +224,7 @@ class Tetris():
 	def tick(self):
 		if not self.piece_is_active:
 			self.spawn()
-		#self.shift()
+		self.shift()
 		self.parent.after(self.tickrate, self.tick)
 	
 	def shift(self, event=None):
@@ -216,18 +242,14 @@ class Tetris():
 		# the piece will move down, or it may be called by a button press event
 		# in which case direction is will be the name of the button
 		direction = (event and event.keysym) or 'Down'
-		# If the piece is at the bottom of the board, settle
 		if direction in down:	
-			row_temp = row+1 # temp value
-			column_temp = column # temp value
+			row += 1
 		elif direction in left:
-			row_temp = row
-			column_temp = column - 1
+			column -= 1
 		elif direction in right:
-			row_temp = row
-			column_temp = column + 1
+			column += 1
 
-		success = self.check_and_move(self.active_piece.shape, row_temp, column_temp, length, width)
+		success = self.check_and_move(self.active_piece.shape, row, column, length, width)
 
 		if direction in down and not success:
 			self.settle()
@@ -241,55 +263,89 @@ class Tetris():
 		# Putting square id for each piece in the field
 		for (x1,y1,x2,y2),piece in zip(self.active_piece.coords, self.active_piece.piece):
 			self.field[y1//self.square_width][x1//self.square_width] = piece
-		# See if we need to clear any full lines
-		indices = [idx for idx, row in enumerate(self.board) if all(row)]
-		if indices:
-			self.clear(indices)
+		# See if we need to clear any full lines and add the score
+		line_numbers = [idx for idx, row in enumerate(self.board) if all(row)]
+		if line_numbers:
+			self.score += (1,2,5,10)[len(line_numbers)-1]
+			self.score_label.config(text='Score:\n{}'.format(self.score))
+			self.clear(line_numbers)
 		# Lose if there is any square in the top 4 rows when this function is called 
 		if any(any(row) for row in self.board[:4]):
 			self.lose()
 			return
-		self.parent.after(self.tickrate, self.spawn())
+			self.parent.after(self.tickrate, self.spawn)
 
-	def spawn(self):
-		self.piece_is_active = True
-		# Select a random shape and randomly rotate it
+	
+	def preview(self):
+		self.preview_canvas.delete(tk.ALL)
+		# Select a shape and randomly rotate it
 		key = random.choice('SZJLOIT')
-		shape = self.shapes[key]
-		shape = rot_arr(shape, random.choice((0,90,180,270)))
-		width = len(shape[0])
-		# Place it in the middle of the board
-		start_column = (10-width)//2
-		self.active_piece = Shape(shape, [], 0, start_column, [])
+		shape = rot_arr(self.shapes[key], random.choice((0,90,180,270)))
+		self.preview_piece = Shape(key, shape, [], 0, 0, [])
+
 		for y, row in enumerate(shape):
-			# Spawn in the shape
-			self.board[y][start_column:start_column+width] = shape[y]
-			for x, cell in enumerate(row, start=start_column):
+			for x, cell in enumerate(row):
 				if cell:
-					self.active_piece.coords.append((self.square_width*x,
-																self.square_width*y,
-																self.square_width*(x+1),
-																self.square_width*(y+1)))
-					self.active_piece.piece.append(
-						self.canvas.create_rectangle(self.active_piece.coords[-1],
+					self.preview_piece.coords.append((self.square_width*x+self.square_width//2,
+																self.square_width*y+self.square_width//2,
+																self.square_width*(x+1)+self.square_width//2,
+																self.square_width*(y+1)+self.square_width//2))
+					self.preview_piece.piece.append(
+						self.preview_canvas.create_rectangle(self.preview_piece.coords[-1],
 																fill=self.colors[key],
 																width=3)
-					)
-		self.active_piece.rotation_index = 0
+															)
+
+
+		self.preview_piece.rotation_index = 0
 		# cycle of coordinates to move the piece slightly each time it rotates
 		# to make the rotation feel more natural
 		if 3 in (len(shape), len(shape[0])): # 2x3 or 3x2 shape
-			self.active_piece.rotation = [(0,0),
+			self.preview_piece.rotation = [(0,0),
 													(1, 0),
 													(-1, 1),
 													(0, -1)]
 		else: # I shape
-			self.active_piece.rotation = [(1,-1),
+			self.preview_piece.rotation = [(1,-1),
 													(0, 1),
 													(0,0),
 													(-1, 0)]	
 		if len(shape) < len(shape[0]):
-			self.active_piece.rotation_index += 1
+			self.preview_piece.rotation_index += 1
+			if len(shape[0]) == 4:
+				self.preview_piece.row = 1
+
+
+	def spawn(self):
+		self.piece_is_active = True
+		self.active_piece = self.preview_piece
+
+
+		width = len(self.active_piece.shape[0])
+		start_column = (10-width)//2
+
+		self.active_piece.coords = []
+		self.active_piece.piece = []
+		self.active_piece.row = self.preview_piece.row
+		self.active_piece.column = start_column
+
+		self.preview()
+
+		for y, row in enumerate(self.active_piece.shape):
+			# Spawn in the shape
+			self.board[y][start_column:start_column+width] = self.active_piece.shape[y]
+			for x, cell in enumerate(row, start=start_column):
+				if cell:
+					self.active_piece.coords.append((self.square_width*x,
+																self.square_width*(y+self.active_piece.row),
+																self.square_width*(x+1),
+																self.square_width*(y+self.active_piece.row+1)))
+					self.active_piece.piece.append(
+						self.canvas.create_rectangle(self.active_piece.coords[-1],
+																fill=self.colors[self.active_piece.key],
+																width=3)
+															)
+
 		
 		self.print_board()
 
@@ -300,20 +356,33 @@ class Tetris():
 		pass
 
 	def snap(self, event=None):
-		print('snap')
-		self.shift()
+		if not self.piece_is_active:		# We do not want to move settled pieces
+			return
+		# Retrieve information about the active piece
+		row = self.active_piece.row
+		column = self.active_piece.column
+		length = len(self.active_piece.shape)
+		width = len(self.active_piece.shape[0])
+		
+		while self.check(self.active_piece.shape, row, column, length, width):
+			row += 1
+		row -= 1
+		self.move(self.active_piece.shape, row, column, length, width)
+		
+		self.settle()
 
-	def clear(self, indices):
-		for idx in indices:
+
+	def clear(self, line_numbers):
+		for idx in line_numbers:
 			self.board.pop(idx)
 			self.board.insert(0, ['' for column in range(self.board_width)])
-		self.clear_iter(indices)
+		self.clear_iter(line_numbers)
 
-	def clear_iter(self, indices, current_column=0):
-		for row in indices:
+	def clear_iter(self, line_numbers, current_column=0):
+		for row in line_numbers:
 			if row%2:
 				cc = current_column
-			else:
+			else: # Reverse animation in even rows
 				cc = self.board_width - current_column - 1
 			square = self.field[row][cc]
 			self.field[row][cc] = None
@@ -321,14 +390,14 @@ class Tetris():
 		if current_column < self.board_width-1:
 			# withouth lambda the function would be called immediately, because 
 			# after needs to evaluate what it will call after the given amount of time
-			self.parent.after(50, lambda: self.clear_iter(indices, current_column+1))
+			self.parent.after(50, lambda: self.clear_iter(line_numbers, current_column+1))
 		else:
 			for idx, row in enumerate(self.field):
-				offset = sum(row_number > idx for row_number in indices)*self.square_width
+				offset = sum(row_number > idx for row_number in line_numbers)*self.square_width
 				for square in row:
 					if square:
 						self.canvas.move(square, 0, offset)
-			for row in indices:
+			for row in line_numbers:
 				self.field.pop(row)
 				self.field.insert(0, [None for column in range(self.board_width)])
 
