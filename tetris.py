@@ -47,6 +47,8 @@ class Tetris():
 		self.board_height = 24
 		self.board = [['' for column in range(self.board_width)]
 							for row in range(self.board_height)]
+		self.field = [[None for column in range(self.board_width)]
+							for row in range(self.board_height)]
 		self.canvas_width = 300
 		self.canvas_height = 720
 		self.square_width = self.canvas_width//10
@@ -100,6 +102,7 @@ class Tetris():
 		self.parent.bind('Q', self.rotate)
 		self.parent.bind('e', self.rotate)
 		self.parent.bind('E', self.rotate)
+		self.parent.bind('<space>', self.snap)
 
 	def print_board(self):
 		for row in self.board:
@@ -195,8 +198,8 @@ class Tetris():
 	def tick(self):
 		if not self.piece_is_active:
 			self.spawn()
-		
-		#self.parent.after(self.tickrate, self.tick)
+		#self.shift()
+		self.parent.after(self.tickrate, self.tick)
 	
 	def shift(self, event=None):
 		down = {'Down', 's', 'S'}
@@ -228,17 +231,24 @@ class Tetris():
 
 		if direction in down and not success:
 			self.settle()
-			return
 
 	def settle(self):
-		pass # this will check for loss by checking the height of the board content
-		# size is 10x20, extra space giving 10x24
 		self.piece_is_active = False
-		print('clonk')
 		# Changing the notation of the previously active piece to
 		# denote that it has now settled
-		for r in self.board:
-			r[:] = ['x' if cell=='*' else cell for cell in r]
+		for row in self.board:
+			row[:] = ['x' if cell=='*' else cell for cell in row]
+		# Putting square id for each piece in the field
+		for (x1,y1,x2,y2),piece in zip(self.active_piece.coords, self.active_piece.piece):
+			self.field[y1//self.square_width][x1//self.square_width] = piece
+		# See if we need to clear any full lines
+		indices = [idx for idx, row in enumerate(self.board) if all(row)]
+		if indices:
+			self.clear(indices)
+		# Lose if there is any square in the top 4 rows when this function is called 
+		if any(any(row) for row in self.board[:4]):
+			self.lose()
+			return
 		self.parent.after(self.tickrate, self.spawn())
 
 	def spawn(self):
@@ -289,8 +299,38 @@ class Tetris():
 	def lose(self):
 		pass
 
-	def clear(self):
-		pass
+	def snap(self, event=None):
+		print('snap')
+		self.shift()
+
+	def clear(self, indices):
+		for idx in indices:
+			self.board.pop(idx)
+			self.board.insert(0, ['' for column in range(self.board_width)])
+		self.clear_iter(indices)
+
+	def clear_iter(self, indices, current_column=0):
+		for row in indices:
+			if row%2:
+				cc = current_column
+			else:
+				cc = self.board_width - current_column - 1
+			square = self.field[row][cc]
+			self.field[row][cc] = None
+			self.canvas.delete(square)
+		if current_column < self.board_width-1:
+			# withouth lambda the function would be called immediately, because 
+			# after needs to evaluate what it will call after the given amount of time
+			self.parent.after(50, lambda: self.clear_iter(indices, current_column+1))
+		else:
+			for idx, row in enumerate(self.field):
+				offset = sum(row_number > idx for row_number in indices)*self.square_width
+				for square in row:
+					if square:
+						self.canvas.move(square, 0, offset)
+			for row in indices:
+				self.field.pop(row)
+				self.field.insert(0, [None for column in range(self.board_width)])
 
 
 root = tk.Tk()
