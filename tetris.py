@@ -60,7 +60,8 @@ class Tetris():
 									for name in ('music.ogg',
 													'settle.ogg',
 													'clear.ogg',
-													'lose.ogg')}
+													'lose.ogg',
+													'levelup.ogg')}
 			except pg.error as e:
 				self.audio = None
 				print(e)
@@ -186,6 +187,7 @@ class Tetris():
 		self.tickrate = 1000
 		self.cleared_lines = 0
 		self.level = 0
+		self.levelup = 0
 		self.max_level = 20
 		self.level_increment = self.tickrate//self.max_level
 		self.piece_is_active = False
@@ -364,13 +366,16 @@ class Tetris():
 				self.score += 1200
 			self.high_score = max(self.score, self.high_score)
 			self.cleared_lines += len(line_numbers)
-			self.level = self.cleared_lines//10
-			if self.level < self.max_level:
+			self.levelup += len(line_numbers)
+			if self.levelup >= 10:
+				if self.audio['x']:
+					self.sounds['levelup.ogg'].play()
+				self.level = self.cleared_lines//10
+				self.levelup -= 10
 				self.tickrate = 1000 - self.level_increment * self.level
-			
+				self.level_var.set('Level:\n{}'.format(self.level))
 			self.score_var.set('Score:\n{}'.format(self.score))
 			self.high_score_var.set('High Score:\n{}'.format(self.high_score))
-			self.level_var.set('Level:\n{}'.format(self.level))
 		# Lose if there is any square in the top 4 rows when this function is called 
 		if any(any(row) for row in self.board[:4]):
 			self.lose()
