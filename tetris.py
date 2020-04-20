@@ -17,6 +17,10 @@ try:
 except:
 	print('The tkinter module cannot be found or is not installed')
 try:
+	from tkinter import messagebox
+except:
+	print('The tkinter/messagebox module cannot be found or is not installed')
+try:
 	import pygame as pg
 except:
 	print('The pygame module cannot be found or is not installed')
@@ -26,6 +30,7 @@ except:
 	print('The matrix_rotation module cannot be found or is not installed'\
 		'The original code can be found on https://github.com/TigerhawkT3/matrix_rotation')
 import random
+import sys
 
 class Shape():
 	def __init__(self, key, shape, piece, row, column, coords):
@@ -42,6 +47,7 @@ class Shape():
 
 class Tetris():
 	def __init__(self, parent):
+		self.debug = 'debug' in sys.argv[1:]
 		parent.title('Tetris')
 		self.parent = parent
 		self.board_width = 10
@@ -49,7 +55,8 @@ class Tetris():
 		self.canvas_width = 300
 		self.canvas_height = 720
 		self.square_width = self.canvas_width//10
-		
+		self.high_score = 0
+
 		self.shapes = {'S':[['*', ''],
 									['*', '*'],
 									['', '*']],
@@ -94,36 +101,104 @@ class Tetris():
 		self.parent.bind('e', self.rotate)
 		self.parent.bind('E', self.rotate)
 		self.parent.bind('<space>', self.snap)
-		
+		self.parent.bind('f', self.snap)
+		self.parent.bind('F', self.snap)
+		self.parent.bind('<Caps_Lock>', self.snap)
+		self.parent.bind('<Escape>', self.pause)
+		self.parent.bind('<Control-n>', self.draw_board)
+		self.parent.bind('<Control-N>', self.draw_board)
+
+		self.canvas = None
+		self.preview_canvas = None
+		self.ticking = None
+		self.spawning = None
+		self.score_var = tk.StringVar()
+		self.high_score_var = tk.StringVar()
+		self.cleared_lines_var = tk.StringVar()
+		self.level_var = tk.StringVar()
+		self.high_score_var.set('High Score:\n0')
+		self.preview_label = tk.Label(root,
+											text='Next piece:',
+											width=15,
+											height=5,
+											font=('Arial', 13, 'bold'))
+		self.preview_label.grid(row=0, column=1, sticky='S')
+		self.score_label = tk.Label(root,
+											textvariable=self.score_var,
+											width=15,
+											height=5,
+											font=('Arial', 13, 'bold'))
+		self.score_label.grid(row=2, column=1, sticky='S')
+		self.high_score_label = tk.Label(root,
+											textvariable=self.high_score_var,
+											width=15,
+											height=5,
+											font=('Arial', 13, 'bold'))
+		self.high_score_label.grid(row=3, column=1, sticky='N')
+		self.cleared_lines_label = tk.Label(root,
+											textvariable=self.cleared_lines_var,
+											width=15,
+											height=5,
+											font=('Arial', 13, 'bold'))
+		self.cleared_lines_label.grid(row=4, column=1)
+		self.level_label = tk.Label(root,
+											textvariable=self.level_var,
+											width=15,
+											height=5,
+											font=('Arial', 13, 'bold'))
+		self.level_label.grid(row=5, column=1)
 		self.draw_board()
 
-	def draw_board(self):
+	def draw_board(self, event=None):
+		if self.ticking:
+			self.parent.after_cancel(self.ticking)
+		if self.spawning:
+			self.parent.after_cancel(self.spawning)
+		self.score_var.set('Score:\n0')
+		self.cleared_lines_var.set('Cleared lines:\n0')
+		self.level_var.set('Level:\n1')
 		self.board = [['' for column in range(self.board_width)]
 							for row in range(self.board_height)]
 		self.field = [[None for column in range(self.board_width)]
 							for row in range(self.board_height)]
+		if self.canvas:
+			self.canvas.destroy()	
 		self.canvas = tk.Canvas(root, width=self.canvas_width, height=self.canvas_height)
-		self.canvas.grid(row=0, column=0, rowspan=2)
+		self.canvas.grid(row=0, column=0, rowspan=6)
 		self.horizontal_seperator = self.canvas.create_line(0,self.canvas_height//6,
 													self.canvas_width, self.canvas_height//6, width=2)
 		self.vertical_seperator = self.canvas.create_line(self.canvas_width, 0,
 													self.canvas_width, self.canvas_height, width=2)
+		if self.preview_canvas:
+			self.preview_canvas.destroy()	
 		self.preview_canvas = tk.Canvas(root,
 												width=5*self.square_width,
 												height=5*self.square_width)
-		self.preview_canvas.grid(row=0, column=1)	
-		self.score_label = tk.Label(root,
-											text='Score:\n0',
-											width=20,
-											height=5)
-		self.score_label.grid(row=1, column=1)
+		self.preview_canvas.grid(row=1, column=1)
 		self.score = 0
 		self.tickrate = 1000
+		self.cleared_lines = 0
+		self.level = 0
 		self.piece_is_active = False
+		self.paused = False
 		self.preview()
-		self.parent.after(self.tickrate, self.tick)
+		self.spawning = self.parent.after(self.tickrate, self.spawn)
+		self.ticking = self.parent.after(self.tickrate*2, self.tick)
 
+	def pause(self, event=None):
+		if self.piece_is_active and not self.paused:
+			self.paused = True
+			self.piece_is_active = False
+			self.parent.after_cancel(self.ticking)
+			if messagebox.askquestion(title='Game paused', message='The game has been paused,\n'+
+														'close this window to continue.', type='ok', icon='info'):
+				self.pause()
+		elif self.paused:
+			self.paused = False
+			self.piece_is_active = True
+			self.ticking = self.parent.after(self.tickrate, self.tick)
 
+	# Used for printing the board in debug mode
 	def print_board(self):
 		for row in self.board:
 			print(*(cell or ' ' for cell in row), sep='')
@@ -165,7 +240,8 @@ class Tetris():
 		self.active_piece.row = row
 		self.active_piece.column = column
 		self.active_piece.shape = shape
-		self.print_board()
+		if self.debug:
+			self.print_board()
 		return True
 
 
@@ -222,10 +298,8 @@ class Tetris():
 		self.active_piece.rotation_index = rotation_index
 
 	def tick(self):
-		if not self.piece_is_active:
-			self.spawn()
 		self.shift()
-		self.parent.after(self.tickrate, self.tick)
+		self.ticking = self.parent.after(self.tickrate, self.tick)
 	
 	def shift(self, event=None):
 		down = {'Down', 's', 'S'}
@@ -266,14 +340,24 @@ class Tetris():
 		# See if we need to clear any full lines and add the score
 		line_numbers = [idx for idx, row in enumerate(self.board) if all(row)]
 		if line_numbers:
-			self.score += (1,2,5,10)[len(line_numbers)-1]
-			self.score_label.config(text='Score:\n{}'.format(self.score))
+			self.score += (40,100,300,1200)[len(line_numbers)-1]
 			self.clear(line_numbers)
+			if all(not cell for row in self.board for cell in row): # Bonus score for clearing the board
+				self.score += 1200
+			self.high_score = max(self.score, self.high_score)
+			self.score_var.set('Score:\n{}'.format(self.score))
+			self.high_score_var.set('High Score:\n{}'.format(self.high_score))
+			self.cleared_lines += len(line_numbers)
+			self.level = self.cleared_lines//2 + 1# should be 10, start at lvl 1
+			if self.level < 50:
+				self.tickrate = 1000 - 20 * self.level
+			self.cleared_lines_var.set('Cleared lines:\n{}'.format(self.cleared_lines))
+			self.level_var.set('Level:\n{}'.format(self.level))
 		# Lose if there is any square in the top 4 rows when this function is called 
 		if any(any(row) for row in self.board[:4]):
 			self.lose()
 			return
-			self.parent.after(self.tickrate, self.spawn)
+		self.spawning = self.parent.after(self.tickrate, self.spawn)
 
 	
 	def preview(self):
@@ -347,15 +431,20 @@ class Tetris():
 															)
 
 		
-		self.print_board()
-
-	def new(self):
-		pass
+		if self.debug:
+			self.print_board()
 
 	def lose(self):
-		pass
+		self.piece_is_active = False
+		self.parent.after_cancel(self.ticking)
+		self.parent.after_cancel(self.spawning)
+		self.clear_iter(range(len(self.board)))
+
 
 	def snap(self, event=None):
+		down = {'space'}
+		left = {'Caps_Lock'}
+		right = {'f', 'F'}
 		if not self.piece_is_active:		# We do not want to move settled pieces
 			return
 		# Retrieve information about the active piece
@@ -363,13 +452,21 @@ class Tetris():
 		column = self.active_piece.column
 		length = len(self.active_piece.shape)
 		width = len(self.active_piece.shape[0])
+
+		direction = event.keysym
+		while True:
+			if self.check(self.active_piece.shape,
+									row+(direction in down),
+									column+(direction in right) - (direction in left),
+									length, width):
+				row += direction in down
+				column += (direction in right) - (direction in left)
+			else:
+				break
 		
-		while self.check(self.active_piece.shape, row, column, length, width):
-			row += 1
-		row -= 1
 		self.move(self.active_piece.shape, row, column, length, width)
-		
-		self.settle()
+		if direction in down:
+			self.settle()
 
 
 	def clear(self, line_numbers):
@@ -378,6 +475,7 @@ class Tetris():
 			self.board.insert(0, ['' for column in range(self.board_width)])
 		self.clear_iter(line_numbers)
 
+	# Animation to clear the board
 	def clear_iter(self, line_numbers, current_column=0):
 		for row in line_numbers:
 			if row%2:
