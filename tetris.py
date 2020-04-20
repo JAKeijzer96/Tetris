@@ -14,19 +14,22 @@
 
 try:
 	import tkinter as tk
-except:
+except ImportError:
 	print('The tkinter module cannot be found or is not installed')
 try:
 	from tkinter import messagebox
-except:
+except ImportError:
 	print('The tkinter/messagebox module cannot be found or is not installed')
 try:
 	import pygame as pg
-except:
-	print('The pygame module cannot be found or is not installed')
+except ImportError:
+	audio = None
+	print('The pygame module cannot be found or is not installed\nThere will be no audio')
+else:
+	audio = True
 try:
 	from matrix_rotation import rotate_array as rot_arr
-except:
+except ImportError:
 	print('The matrix_rotation module cannot be found or is not installed'\
 		'The original code can be found on https://github.com/TigerhawkT3/matrix_rotation')
 import random
@@ -50,6 +53,24 @@ class Tetris():
 		self.debug = 'debug' in sys.argv[1:]
 		parent.title('Tetris')
 		self.parent = parent
+		if audio: # if pygame import succeeded
+			pg.mixer.init(buffer=512)
+			try:
+				self.sounds = {name:pg.mixer.Sound(name)
+									for name in ('music.ogg',
+													'settle.ogg',
+													'clear.ogg',
+													'lose.ogg')}
+			except pg.error as e:
+				self.audio = None
+				print(e)
+			else:
+				self.audio = {'m':True, 'x':True}
+				for char in 'mMxX':
+					self.parent.bind(char, self.toggle_audio)
+				self.sounds['music.ogg'].play(loops=-1)
+		
+		
 		self.board_width = 10
 		self.board_height = 24
 		self.canvas_width = 300
@@ -84,26 +105,12 @@ class Tetris():
 							'O':'blue',
 							'I':'red',
 							'T':'violet'}
-		self.parent.bind('<Down>', self.shift)
-		self.parent.bind('s', self.shift)
-		self.parent.bind('S', self.shift)
-		self.parent.bind('<Left>', self.shift)
-		self.parent.bind('a', self.shift)
-		self.parent.bind('A', self.shift)
-		self.parent.bind('<Right>', self.shift)
-		self.parent.bind('d', self.shift)
-		self.parent.bind('D', self.shift)
-		self.parent.bind('<Up>', self.rotate)
-		self.parent.bind('w', self.rotate)
-		self.parent.bind('W', self.rotate)
-		self.parent.bind('q', self.rotate)
-		self.parent.bind('Q', self.rotate)
-		self.parent.bind('e', self.rotate)
-		self.parent.bind('E', self.rotate)
-		self.parent.bind('<space>', self.snap)
-		self.parent.bind('f', self.snap)
-		self.parent.bind('F', self.snap)
-		self.parent.bind('<Caps_Lock>', self.snap)
+		for key in ('<Down>', 's', 'S', '<Left>', 'a', 'A', '<Right>', 'd', 'D'):
+			self.parent.bind(key, self.shift)
+		for key in ('<Up>', 'w', 'W', 'q', 'Q', 'e', 'E'):
+			self.parent.bind(key, self.rotate)
+		for key in ('<space>', 'f', 'F', 'Caps_Lock'):
+			self.parent.bind(key, self.snap)
 		self.parent.bind('<Escape>', self.pause)
 		self.parent.bind('<Control-n>', self.draw_board)
 		self.parent.bind('<Control-N>', self.draw_board)
@@ -114,39 +121,40 @@ class Tetris():
 		self.spawning = None
 		self.score_var = tk.StringVar()
 		self.high_score_var = tk.StringVar()
-		self.cleared_lines_var = tk.StringVar()
 		self.level_var = tk.StringVar()
+		self.max_level_var = tk.StringVar()
 		self.high_score_var.set('High Score:\n0')
+		self.max_level_var.set('Max level:\n0')
 		self.preview_label = tk.Label(root,
 											text='Next piece:',
 											width=15,
-											height=5,
+											height=3,
 											font=('Arial', 13, 'bold'))
 		self.preview_label.grid(row=0, column=1, sticky='S')
 		self.score_label = tk.Label(root,
 											textvariable=self.score_var,
 											width=15,
-											height=5,
+											height=3,
 											font=('Arial', 13, 'bold'))
-		self.score_label.grid(row=2, column=1, sticky='S')
+		self.score_label.grid(row=2, column=1)
 		self.high_score_label = tk.Label(root,
 											textvariable=self.high_score_var,
 											width=15,
-											height=5,
+											height=3,
 											font=('Arial', 13, 'bold'))
-		self.high_score_label.grid(row=3, column=1, sticky='N')
-		self.cleared_lines_label = tk.Label(root,
-											textvariable=self.cleared_lines_var,
-											width=15,
-											height=5,
-											font=('Arial', 13, 'bold'))
-		self.cleared_lines_label.grid(row=4, column=1)
+		self.high_score_label.grid(row=3, column=1)
 		self.level_label = tk.Label(root,
 											textvariable=self.level_var,
 											width=15,
-											height=5,
+											height=3,
 											font=('Arial', 13, 'bold'))
 		self.level_label.grid(row=5, column=1)
+		self.max_level_label = tk.Label(root,
+											textvariable=self.max_level_var,
+											width=15,
+											height=3,
+											font=('Arial', 13, 'bold'))
+		self.max_level_label.grid(row=6, column=1)	
 		self.draw_board()
 
 	def draw_board(self, event=None):
@@ -155,8 +163,7 @@ class Tetris():
 		if self.spawning:
 			self.parent.after_cancel(self.spawning)
 		self.score_var.set('Score:\n0')
-		self.cleared_lines_var.set('Cleared lines:\n0')
-		self.level_var.set('Level:\n1')
+		self.level_var.set('Level:\n0')
 		self.board = [['' for column in range(self.board_width)]
 							for row in range(self.board_height)]
 		self.field = [[None for column in range(self.board_width)]
@@ -164,7 +171,7 @@ class Tetris():
 		if self.canvas:
 			self.canvas.destroy()	
 		self.canvas = tk.Canvas(root, width=self.canvas_width, height=self.canvas_height)
-		self.canvas.grid(row=0, column=0, rowspan=6)
+		self.canvas.grid(row=0, column=0, rowspan=7)
 		self.horizontal_seperator = self.canvas.create_line(0,self.canvas_height//6,
 													self.canvas_width, self.canvas_height//6, width=2)
 		self.vertical_seperator = self.canvas.create_line(self.canvas_width, 0,
@@ -179,11 +186,25 @@ class Tetris():
 		self.tickrate = 1000
 		self.cleared_lines = 0
 		self.level = 0
+		self.max_level = 20
+		self.level_increment = self.tickrate//self.max_level
 		self.piece_is_active = False
 		self.paused = False
 		self.preview()
 		self.spawning = self.parent.after(self.tickrate, self.spawn)
 		self.ticking = self.parent.after(self.tickrate*2, self.tick)
+
+	def toggle_audio(self, event=None):
+		if not event:
+			return
+		key = event.keysym.lower()
+		self.audio[key] = not self.audio[key]
+		if key == 'm':
+			if not self.audio[key]:
+				self.sounds['music.ogg'].stop()
+			else:
+				self.sounds['music.ogg'].play(loops=-1)
+
 
 	def pause(self, event=None):
 		if self.piece_is_active and not self.paused:
@@ -244,13 +265,10 @@ class Tetris():
 			self.print_board()
 		return True
 
-
 	def check_and_move(self, shape, row, column, length, width):
 		if self.check(shape, row, column, length, width):
 			self.move(shape, row, column, length, width)
 			return True
-
-
 
 	def rotate(self, event=None):
 		# Don't rotate inactive pieces
@@ -345,18 +363,20 @@ class Tetris():
 			if all(not cell for row in self.board for cell in row): # Bonus score for clearing the board
 				self.score += 1200
 			self.high_score = max(self.score, self.high_score)
+			self.cleared_lines += len(line_numbers)
+			self.level = self.cleared_lines//10
+			if self.level < self.max_level:
+				self.tickrate = 1000 - self.level_increment * self.level
+			
 			self.score_var.set('Score:\n{}'.format(self.score))
 			self.high_score_var.set('High Score:\n{}'.format(self.high_score))
-			self.cleared_lines += len(line_numbers)
-			self.level = self.cleared_lines//2 + 1# should be 10, start at lvl 1
-			if self.level < 50:
-				self.tickrate = 1000 - 20 * self.level
-			self.cleared_lines_var.set('Cleared lines:\n{}'.format(self.cleared_lines))
 			self.level_var.set('Level:\n{}'.format(self.level))
 		# Lose if there is any square in the top 4 rows when this function is called 
 		if any(any(row) for row in self.board[:4]):
 			self.lose()
 			return
+		if self.audio['x'] and not line_numbers: # if audio is on and we didn't clear lines
+			self.sounds['settle.ogg'].play() # or lose the game, play the settle sound
 		self.spawning = self.parent.after(self.tickrate, self.spawn)
 
 	
@@ -436,6 +456,8 @@ class Tetris():
 
 	def lose(self):
 		self.piece_is_active = False
+		if self.audio['x']:
+			self.sounds['lose.ogg'].play()
 		self.parent.after_cancel(self.ticking)
 		self.parent.after_cancel(self.spawning)
 		self.clear_iter(range(len(self.board)))
@@ -470,6 +492,8 @@ class Tetris():
 
 
 	def clear(self, line_numbers):
+		if self.audio['x']:
+			self.sounds['clear.ogg'].play()
 		for idx in line_numbers:
 			self.board.pop(idx)
 			self.board.insert(0, ['' for column in range(self.board_width)])
