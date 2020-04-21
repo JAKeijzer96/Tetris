@@ -31,6 +31,7 @@ except ImportError:
 		'The original code can be found on https://github.com/TigerhawkT3/matrix_rotation')
 import random
 import sys
+import time
 
 class Shape():
 	def __init__(self, key, shape, piece, row, column, coords):
@@ -45,14 +46,42 @@ class Shape():
 		self.key = key
 		self.shape = shape
 		self.piece = piece
-		self.row = row
+		self._row = row
 		self.column = column
 		self.coords = coords
+		self._rotation_index = 0
+		self.hover_time = self.spin_time = time.perf_counter()
+	@property
+	def row(self):
+		return self._row
+	@row.setter
+	def row(self, newrow):
+		if newrow != self._row:
+			self._row = newrow
+			self.hover_time = time.perf_counter()
+	@property
+	def rotation_index(self):
+		return self._rotation_index
+	@rotation_index.setter
+	def rotation_index(self, newvalue):
+		self._rotation_index = newvalue
+		self.spin_time = time.perf_counter()
+	@property
+	def hover(self):
+		# 0.5 is a magic number, hover for max 0.5 second
+		return time.perf_counter() - self.hover_time < 0.5
+	@property
+	def spin(self):
+		# 0.5 is a magic number, spin for max 0.5 second
+		return time.perf_counter() - self.spin_time < 0.5
 
 class Tetris():
 	def __init__(self, parent, audio=None):
-		self.debug = 'debug' in sys.argv[1:] # Check for debug flag in the command line
-		self.random = 'random' in sys.argv[1:] # Check for random flag in the command line
+		# Check for flags in the command line
+		self.debug = 'debug' in sys.argv[1:]
+		self.random = 'random' in sys.argv[1:]
+		self.spin = 'spin' in sys.argv[1:]
+		self.hover = 'nohover' not in sys.argv[1:] # defaults to true
 		parent.title('Tetris')
 		self.parent = parent
 		self.audio = audio
@@ -78,6 +107,7 @@ class Tetris():
 		self.canvas_height = 720
 		self.square_width = self.canvas_width//10
 		self.high_score = 0
+		self.high_level = 0
 		# Defining the 7 shapes as 2D arrays. Empty strings mean open spaces, non-empty strings
 		# are where the squares of the shape are
 		self.shapes = {'S':[['*', ''],
@@ -131,10 +161,10 @@ class Tetris():
 		self.score_var = tk.StringVar()
 		self.high_score_var = tk.StringVar()
 		self.level_var = tk.StringVar()
-		self.max_level_var = tk.StringVar()
-		# High score and max level are 0 initially and will not be reset when starting a new game
+		self.high_level_var = tk.StringVar()
+		# High score and highest level are 0 initially and will not be reset when starting a new game
 		self.high_score_var.set('High Score:\n0')
-		self.max_level_var.set('Max level:\n0')
+		self.high_level_var.set('Highest level:\n0')
 		# Creating and gridding labels
 		self.preview_label = tk.Label(root,
 											text='Next piece:',
@@ -160,12 +190,12 @@ class Tetris():
 											height=3,
 											font=('Arial', 13, 'bold'))
 		self.level_label.grid(row=5, column=1)
-		self.max_level_label = tk.Label(root,
-											textvariable=self.max_level_var,
+		self.high_level_label = tk.Label(root,
+											textvariable=self.high_level_var,
 											width=15,
 											height=3,
 											font=('Arial', 13, 'bold'))
-		self.max_level_label.grid(row=6, column=1)
+		self.high_level_label.grid(row=6, column=1)
 		# Start the game by calling the draw_board() function
 		self.draw_board()
 
@@ -268,6 +298,7 @@ class Tetris():
 		if self.piece_is_active and not self.paused:
 			self.paused = True # pause the game
 			self.piece_is_active = False
+			self.sounds['music.ogg'].stop()
 			self.parent.after_cancel(self.ticking) # cancel any tick() calls
 			# Show a popup saying the game is paused. Resume the game when popup is closed
 			if messagebox.askquestion(title='Game paused', message='The game has been paused,\n'+
@@ -276,6 +307,7 @@ class Tetris():
 		elif self.paused: # resume the game
 			self.paused = False
 			self.piece_is_active = True
+			self.sounds['music.ogg'].play(loops=-1)
 			self.ticking = self.parent.after(self.tickrate, self.tick)
 
 	def print_board(self):
@@ -367,6 +399,8 @@ class Tetris():
 			return
 		# Don't rotate squares
 		if len(self.active_piece.shape) == len(self.active_piece.shape[0]):
+			# Notify the piece that it has 'rotated', used for easyspin delay mechanic
+			self.active_piece.rotation_index = self.active_piece.rotation_index
 			return
 		# Retrieve information about the active piece
 		row = self.active_piece.row
@@ -412,7 +446,9 @@ class Tetris():
 		'''
 		Shifts the active piece down one row and calls itself after self.tickrate
 		'''
-		self.shift()
+		# If the piece is active and NOT(the spin feature is active and the piece is currently spinning)
+		if self.piece_is_active and not (self.spin and self.active_piece.spin):
+			self.shift()
 		self.ticking = self.parent.after(self.tickrate, self.tick)
 	
 	def shift(self, event=None):
@@ -444,8 +480,11 @@ class Tetris():
 
 		success = self.check_and_move(self.active_piece.shape, row, column, length, width)
 
-		if direction in down and not success: # If we're trying to move down but the piece is
-			self.settle() # blocked by something on the row below, settle this piece
+
+		# If we're moving down and the piece is blocked by something on the row below
+		# and NOT(the feature is on and we're hovering), then settle
+		if direction in down and not success and not (self.hover and self.active_piece.hover): 
+			self.settle()
 
 	def settle(self):
 		'''
@@ -474,11 +513,11 @@ class Tetris():
 				if self.audio['x']:
 					self.sounds['levelup.ogg'].play()
 				self.level = self.cleared_lines//10 # level up for every 10 lines cleared
-				self.max_level = max(self.level, self.max_level)
+				self.high_level = max(self.level, self.high_level)
 				self.levelup -= 10
 				self.tickrate = 1000 - self.level_increment * self.level # increase the tickrate
 				self.level_var.set('Level:\n{}'.format(self.level))
-				self.max_level_var.set('Max level:\n{}'.format(self.max_level))
+				self.high_level_var.set('Highest level:\n{}'.format(self.high_level))
 			self.score_var.set('Score:\n{}'.format(self.score))
 			self.high_score_var.set('High Score:\n{}'.format(self.high_score))
 		# Lose if there is any square in the top 4 rows when this function is called 
