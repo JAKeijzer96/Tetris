@@ -50,12 +50,13 @@ class Shape():
 		self.coords = coords
 
 class Tetris():
-	def __init__(self, parent):
+	def __init__(self, parent, audio=None):
 		self.debug = 'debug' in sys.argv[1:] # Check for debug flag in the command line
 		self.random = 'random' in sys.argv[1:] # Check for random flag in the command line
 		parent.title('Tetris')
 		self.parent = parent
-		if audio: # if pygame import succeeded
+		self.audio = audio
+		if self.audio: # if pygame import succeeded
 			pg.mixer.init(buffer=512)
 			try: # try importing the sound files from the current directory
 				self.sounds = {name:pg.mixer.Sound(name)
@@ -71,7 +72,6 @@ class Tetris():
 				self.audio = {'m':True, 'x':True} # if sound files are present,
 				for char in 'mMxX': # enable audio and bind keys
 					self.parent.bind(char, self.toggle_audio)
-		
 		self.board_width = 10 # Initialize board width and height in number of squares
 		self.board_height = 24 
 		self.canvas_width = 300 # Initialize canvas width and height in number of pixels
@@ -487,7 +487,11 @@ class Tetris():
 			return
 		if self.audio and self.audio['x'] and not line_numbers: # if audio is on and we didn't clear lines
 			self.sounds['settle.ogg'].play() # or lose the game, play the settle sound
-		self.spawning = self.parent.after(self.tickrate, self.spawn) # spawn a new piece
+		# Spawn in a new piece after self.tickrate, or if a line has been cleared and the tickrate
+		# is shorter than the line-clearing animation, wait for the animation to finish
+		# 500 is a magic number, board_width times the animation delay in clear_iter()
+		self.spawning = self.parent.after(500 if line_numbers and self.tickrate<500
+											else self.tickrate, self.spawn)
 	
 	def preview(self):
 		'''
@@ -671,5 +675,5 @@ class Tetris():
 				self.field.insert(0, [None for column in range(self.board_width)])
 
 root = tk.Tk()
-tetris = Tetris(root)
+tetris = Tetris(root, audio)
 root.mainloop()
