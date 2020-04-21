@@ -110,16 +110,19 @@ class Tetris():
 			self.parent.bind(key, self.shift)
 		for key in ('<Up>', 'w', 'W', 'q', 'Q', 'e', 'E'):
 			self.parent.bind(key, self.rotate)
-		for key in ('<space>', 'f', 'F', 'Caps_Lock'):
+		for key in ('<space>', 'f', 'F', '<Caps_Lock>'):
 			self.parent.bind(key, self.snap)
 		self.parent.bind('<Escape>', self.pause)
 		self.parent.bind('<Control-n>', self.draw_board)
 		self.parent.bind('<Control-N>', self.draw_board)
+		self.parent.bind('g', self.toggle_guides)
+		self.parent.bind('G', self.toggle_guides)
 
 		self.canvas = None
 		self.preview_canvas = None
 		self.ticking = None
 		self.spawning = None
+		self.guide_fill = 'black'
 		self.score_var = tk.StringVar()
 		self.high_score_var = tk.StringVar()
 		self.level_var = tk.StringVar()
@@ -194,10 +197,21 @@ class Tetris():
 		self.paused = False
 		self.bag = []
 		self.preview()
+		self.guides = [self.canvas.create_line(0, 0, 0, self.canvas_height),
+							self.canvas.create_line(self.canvas_width,
+															0,
+															self.canvas_width,
+															self.canvas_height)]
+		self.toggle_guides() # Start with guidelines off
 		self.spawning = self.parent.after(self.tickrate, self.spawn)
 		self.ticking = self.parent.after(self.tickrate*2, self.tick)
 		if self.audio and self.audio['m']:
 			self.sounds['music.ogg'].play(loops=-1)
+
+	def toggle_guides(self, event=None):
+		self.guide_fill = '' if self.guide_fill else 'black'
+		self.canvas.itemconfig(self.guides[0], fill=self.guide_fill)
+		self.canvas.itemconfig(self.guides[1], fill=self.guide_fill)
 
 	def toggle_audio(self, event=None):
 		if not event:
@@ -209,7 +223,6 @@ class Tetris():
 				self.sounds['music.ogg'].stop()
 			else:
 				self.sounds['music.ogg'].play(loops=-1)
-
 
 	def pause(self, event=None):
 		if self.piece_is_active and not self.paused:
@@ -266,14 +279,17 @@ class Tetris():
 		self.active_piece.row = row
 		self.active_piece.column = column
 		self.active_piece.shape = shape
+
+		self.move_guides(column, column+width)
 		if self.debug:
 			self.print_board()
 		return True
 
 	def check_and_move(self, shape, row, column, length, width):
-		if self.check(shape, row, column, length, width):
-			self.move(shape, row, column, length, width)
-			return True
+		# If self.check is false, the function will return false without
+		# checking (and executing) self.move
+		return self.check(shape, row, column, length, width
+			) and self.move(shape, row, column, length, width)
 
 	def rotate(self, event=None):
 		# Don't rotate inactive pieces
@@ -314,8 +330,7 @@ class Tetris():
 		row += y_correction
 		column += x_correction
 
-		success = self.check_and_move(shape, row, column, length, width)
-		if not success:
+		if not self.check_and_move(shape, row, column, length, width):
 			return
 
 		self.active_piece.rotation_index = rotation_index
@@ -435,6 +450,13 @@ class Tetris():
 				self.preview_piece.row = 1
 
 
+
+	def move_guides(self, left, right):
+		left *= self.square_width
+		right *= self.square_width
+		self.canvas.coords(self.guides[0], left, 0, left, self.canvas_height)
+		self.canvas.coords(self.guides[1], right, 0, right, self.canvas_height)
+
 	def spawn(self):
 		self.piece_is_active = True
 		self.active_piece = self.preview_piece
@@ -462,10 +484,10 @@ class Tetris():
 					self.active_piece.piece.append(
 						self.canvas.create_rectangle(self.active_piece.coords[-1],
 																fill=self.colors[self.active_piece.key],
-																width=3)
-															)
+																width=3))
 
-		
+		self.move_guides(start_column, start_column+width)
+
 		if self.debug:
 			self.print_board()
 
