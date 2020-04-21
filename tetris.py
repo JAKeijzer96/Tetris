@@ -51,6 +51,7 @@ class Shape():
 class Tetris():
 	def __init__(self, parent):
 		self.debug = 'debug' in sys.argv[1:]
+		self.random = 'random' in sys.argv[1:]
 		parent.title('Tetris')
 		self.parent = parent
 		if audio: # if pygame import succeeded
@@ -69,7 +70,6 @@ class Tetris():
 				self.audio = {'m':True, 'x':True}
 				for char in 'mMxX':
 					self.parent.bind(char, self.toggle_audio)
-				self.sounds['music.ogg'].play(loops=-1)
 		
 		
 		self.board_width = 10
@@ -192,9 +192,12 @@ class Tetris():
 		self.level_increment = self.tickrate//self.max_level
 		self.piece_is_active = False
 		self.paused = False
+		self.bag = []
 		self.preview()
 		self.spawning = self.parent.after(self.tickrate, self.spawn)
 		self.ticking = self.parent.after(self.tickrate*2, self.tick)
+		if self.audio and self.audio['m']:
+			self.sounds['music.ogg'].play(loops=-1)
 
 	def toggle_audio(self, event=None):
 		if not event:
@@ -360,10 +363,10 @@ class Tetris():
 		# See if we need to clear any full lines and add the score
 		line_numbers = [idx for idx, row in enumerate(self.board) if all(row)]
 		if line_numbers:
-			self.score += (40,100,300,1200)[len(line_numbers)-1]
+			self.score += (40,100,300,1200)[len(line_numbers)-1]*(self.level+1)
 			self.clear(line_numbers)
 			if all(not cell for row in self.board for cell in row): # Bonus score for clearing the board
-				self.score += 1200
+				self.score += 1200*(self.level+1)
 			self.high_score = max(self.score, self.high_score)
 			self.cleared_lines += len(line_numbers)
 			self.levelup += len(line_numbers)
@@ -371,16 +374,18 @@ class Tetris():
 				if self.audio['x']:
 					self.sounds['levelup.ogg'].play()
 				self.level = self.cleared_lines//10
+				self.max_level = max(self.level, self.max_level)
 				self.levelup -= 10
 				self.tickrate = 1000 - self.level_increment * self.level
 				self.level_var.set('Level:\n{}'.format(self.level))
+				self.max_level_var.set('Max level:\n{}'.format(self.max_level))
 			self.score_var.set('Score:\n{}'.format(self.score))
 			self.high_score_var.set('High Score:\n{}'.format(self.high_score))
 		# Lose if there is any square in the top 4 rows when this function is called 
 		if any(any(row) for row in self.board[:4]):
 			self.lose()
 			return
-		if self.audio['x'] and not line_numbers: # if audio is on and we didn't clear lines
+		if self.audio and self.audio['x'] and not line_numbers: # if audio is on and we didn't clear lines
 			self.sounds['settle.ogg'].play() # or lose the game, play the settle sound
 		self.spawning = self.parent.after(self.tickrate, self.spawn)
 
@@ -388,7 +393,12 @@ class Tetris():
 	def preview(self):
 		self.preview_canvas.delete(tk.ALL)
 		# Select a shape and randomly rotate it
-		key = random.choice('SZJLOIT')
+		if not self.bag:
+			if self.random:
+				self.bag.append(random.choice('SZJLOIT'))
+			else:
+				self.bag = random.sample('SZJLOIT', 7)
+		key = self.bag.pop()
 		shape = rot_arr(self.shapes[key], random.choice((0,90,180,270)))
 		self.preview_piece = Shape(key, shape, [], 0, 0, [])
 
@@ -461,8 +471,10 @@ class Tetris():
 
 	def lose(self):
 		self.piece_is_active = False
-		if self.audio['x']:
+		if self.audio and self.audio['x']:
 			self.sounds['lose.ogg'].play()
+		if self.audio and self.audio['m']:
+			self.sounds['music.ogg'].stop()
 		self.parent.after_cancel(self.ticking)
 		self.parent.after_cancel(self.spawning)
 		self.clear_iter(range(len(self.board)))
@@ -497,7 +509,7 @@ class Tetris():
 
 
 	def clear(self, line_numbers):
-		if self.audio['x']:
+		if self.audio and self.audio['x']:
 			self.sounds['clear.ogg'].play()
 		for idx in line_numbers:
 			self.board.pop(idx)
