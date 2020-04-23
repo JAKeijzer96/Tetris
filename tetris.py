@@ -1,6 +1,7 @@
 # -------------------------------
 # Name: Tetris
 # Author: Jasper Keijzer
+# Language: Python 3.6.9
 # 
 # Created: 10/04/2020
 # Inspiration & source for large amount of code:
@@ -155,8 +156,7 @@ class Tetris():
 		self.canvas = None
 		self.preview_canvas = None
 		self.ticking = None
-		self.spawning = None
-		self.guide_fill = 'black'
+		self.spawning = None		
 		# Using stringvar to automatically update the corresponding labels
 		self.score_var = tk.StringVar()
 		self.high_score_var = tk.StringVar()
@@ -255,10 +255,12 @@ class Tetris():
 															0,
 															self.canvas_width,
 															self.canvas_height)]
+		self.guide_fill = 'black'
 		self.toggle_guides() # Start with guidelines off
 		self.spawning = self.parent.after(self.tickrate, self.spawn) # spawn a piece
 		self.ticking = self.parent.after(self.tickrate*2, self.tick) # start ticking
 		if self.audio and self.audio['m']: # start the audio on an endless loop
+			self.sounds['music.ogg'].stop() # stop any music from a previous game
 			self.sounds['music.ogg'].play(loops=-1)
 
 	def toggle_guides(self, event=None):
@@ -437,10 +439,17 @@ class Tetris():
 		column += x_correction
 
 		# call check_and_move to see if the rotation is allowed, and execute it if it is
-		if not self.check_and_move(shape, row, column, length, width):
+		if self.check_and_move(shape, row, column, length, width):
+			# Update rotation index for next x,y correction
+			self.active_piece.rotation_index = rotation_index
 			return
-		# Update rotation index for next x,y correction
-		self.active_piece.rotation_index = rotation_index
+		
+		# If default check_and_move failed, try kicking the piece
+		for y,x in zip(( 0, 0,-1, 0, 0,-2, -1,-1),
+							(-1, 1, 0,-2, 2, 0, -1, 1)):
+			if self.check_and_move(shape, row+y, column+x, length, width):
+				self.active_piece.rotation_index = rotation_index
+				return
 
 	def tick(self):
 		'''
@@ -501,12 +510,6 @@ class Tetris():
 		# line_numbers is a list of indices of any full rows
 		line_numbers = [idx for idx, row in enumerate(self.board) if all(row)]
 		if line_numbers: # if any lines are full
-			# Update the score, +1 because we start at level 0
-			self.score += (40,100,300,1200)[len(line_numbers)-1]*(self.level+1)
-			self.clear(line_numbers)
-			if all(not cell for row in self.board for cell in row): # If the board is empty now,
-				self.score += 1200*(self.level+1) # give a bonus score for clearing the board
-			self.high_score = max(self.score, self.high_score)
 			self.cleared_lines += len(line_numbers)
 			self.levelup += len(line_numbers)
 			if self.levelup >= 10:
@@ -518,6 +521,14 @@ class Tetris():
 				self.tickrate = 1000 - self.level_increment * self.level # increase the tickrate
 				self.level_var.set('Level:\n{}'.format(self.level))
 				self.high_level_var.set('Highest level:\n{}'.format(self.high_level))
+			elif self.audio and self.audio['x']: # if we haven't leveled up, play clear sound instead
+				self.sounds['clear.ogg'].play() 
+			self.clear(line_numbers) # clear the lines
+			# Update the score, +1 because we start at level 0
+			self.score += (40,100,300,1200)[len(line_numbers)-1]*(self.level+1)
+			if all(not cell for row in self.board for cell in row): # If the board is empty now,
+				self.score += 1200*(self.level+1) # give a bonus score for clearing the board
+			self.high_score = max(self.score, self.high_score)		
 			self.score_var.set('Score:\n{}'.format(self.score))
 			self.high_score_var.set('High Score:\n{}'.format(self.high_score))
 		# Lose if there is any square in the top 4 rows when this function is called 
@@ -676,8 +687,6 @@ class Tetris():
 		Parameter:
 			line_numbers (list): a list of int indices of full rows
 		'''
-		if self.audio and self.audio['x']:
-			self.sounds['clear.ogg'].play()
 		for idx in line_numbers:\
 			# Remove the full row from the board and create an empty one on top
 			self.board.pop(idx)
