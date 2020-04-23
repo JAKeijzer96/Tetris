@@ -321,15 +321,15 @@ class Tetris():
 				self.pausewindow = Toplevel(width=200)
 				self.pausewindow.protocol('WM_DELETE_WINDOW', self.pause)
 				title = 'Help'
-				message_content = 'Welcome to Tetris! The goal of the game is to get the highest possible score'\
-						'before the board fills up. Fill a row to clear it, but be careful not to leave any gaps!'\
-						'The pieces fall faster and faster as you progress though the levels.\n\n'\
+				message_content = 'Welcome to Tetris! The goal of the game is to get the highest possible score '\
+						'before the board fills up. Fill a row to clear it, but be careful not to leave any gaps! '\
+						'The pieces fall faster and faster as you progress through the levels.\n\n'\
 						'Controls:\nUse the arrow keys to move the piece around the board.\n'\
 						'Press Q to rotate anti-clockwise, and E to rotate clock-wise.\n'\
 						'Press A or D to move the piece as far left or right as possible.\n'\
 						'Press S or Space to instantly move the piece to the bottom.\n'\
 						'Press G to toggle guidelines.\n'\
-						'Press M to toggle music, and X to toggle sound effects\n'\
+						'Press M to toggle music, and X to toggle sound effects.\n'\
 						'Press the Escape button to pause the game.\n'\
 						'If you want to start over, press Ctrl + N for a new game.\n\n'\
 						'Good luck!'
@@ -338,8 +338,8 @@ class Tetris():
 				button = tk.Button(self.pausewindow, text='Ok', command=self.pause)
 				button.pack()
 			else:
-				if messagebox.askquestion(title='Game paused', message='The game has been paused,\n'+
-														'close this window to continue.', type='ok', icon='info'):
+				if messagebox.askquestion(title='Game paused', message='The game has been paused.\n'+
+														'Close this window to continue.', type='ok', icon='info'):
 					self.pause()
 		elif self.paused: # resume the game
 			if self.pausewindow:
