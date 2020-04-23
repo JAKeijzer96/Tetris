@@ -19,6 +19,10 @@ try:
 except ImportError:
 	print('The tkinter/messagebox module cannot be found or is not installed')
 try:
+	from tkinter import Toplevel
+except ImportError:
+	print('The tkinter/Toplevel module cannot be found or is not installed')
+try:
 	import pygame as pg
 except ImportError:
 	audio = None
@@ -140,11 +144,11 @@ class Tetris():
 							'I':'red',
 							'T':'violet'}
 		# Binding a set of keys that the user may like the use
-		for key in ('<Down>', 's', 'S', '<Left>', 'a', 'A', '<Right>', 'd', 'D'):
+		for key in ('<Down>', '<Left>', '<Right>'):
 			self.parent.bind(key, self.shift)
 		for key in ('<Up>', 'w', 'W', 'q', 'Q', 'e', 'E'):
 			self.parent.bind(key, self.rotate)
-		for key in ('<space>', 'f', 'F', '<Caps_Lock>'):
+		for key in ('<space>', 's', 'S', 'a', 'A', 'd', 'D'):
 			self.parent.bind(key, self.snap)
 		self.parent.bind('<Escape>', self.pause)
 		self.parent.bind('<Control-n>', self.draw_board)
@@ -189,13 +193,15 @@ class Tetris():
 											width=15,
 											height=3,
 											font=('Arial', 13, 'bold'))
-		self.level_label.grid(row=5, column=1)
+		self.level_label.grid(row=4, column=1)
 		self.high_level_label = tk.Label(root,
 											textvariable=self.high_level_var,
 											width=15,
 											height=3,
 											font=('Arial', 13, 'bold'))
-		self.high_level_label.grid(row=6, column=1)
+		self.high_level_label.grid(row=5, column=1)
+		self.help_button = tk.Button(parent, text='Help', command=lambda: self.pause(help=True))
+		self.help_button.grid(row=6, column=1)
 		# Start the game by calling the draw_board() function
 		self.draw_board()
 
@@ -257,6 +263,7 @@ class Tetris():
 															self.canvas_height)]
 		self.guide_fill = 'black'
 		self.toggle_guides() # Start with guidelines off
+		self.pausewindow = None
 		self.spawning = self.parent.after(self.tickrate, self.spawn) # spawn a piece
 		self.ticking = self.parent.after(self.tickrate*2, self.tick) # start ticking
 		if self.audio and self.audio['m']: # start the audio on an endless loop
@@ -291,22 +298,47 @@ class Tetris():
 			else: # restart the endless loop
 				self.sounds['music.ogg'].play(loops=-1)
 
-	def pause(self, event=None):
+	def pause(self, event=None, help=False):
 		'''
 		Pauses the game
 		Parameter:
 			event (event): a keypress event, defaulting to None
+			help (bool): variable to determine whether to show the pause or help text, defaulting to None
 		'''
 		if self.piece_is_active and not self.paused:
 			self.paused = True # pause the game
 			self.piece_is_active = False
-			self.sounds['music.ogg'].stop()
+			self.sounds['music.ogg'].fadeout(500)
 			self.parent.after_cancel(self.ticking) # cancel any tick() calls
 			# Show a popup saying the game is paused. Resume the game when popup is closed
-			if messagebox.askquestion(title='Game paused', message='The game has been paused,\n'+
+			# if the user clicks OK or the red X on the top right of the window
+			if help:
+				self.pausewindow = Toplevel(width=200)
+				self.pausewindow.protocol('WM_DELETE_WINDOW', self.pause)
+				title = 'Help'
+				message_content = 'Welcome to Tetris! The goal of the game is to get the highest possible score'\
+						'before the board fills up. Fill a row to clear it, but be careful not to leave any gaps!'\
+						'The pieces fall faster and faster as you progress though the levels.\n\n'\
+						'Controls:\nUse the arrow keys to move the piece around the board.\n'\
+						'Press Q to rotate anti-clockwise, and E to rotate clock-wise.\n'\
+						'Press A or D to move the piece as far left or right as possible.\n'\
+						'Press S or Space to instantly move the piece to the bottom.\n'\
+						'Press G to toggle guidelines.\n'\
+						'Press M to toggle music, and X to toggle sound effects\n'\
+						'Press the Escape button to pause the game.\n'\
+						'If you want to start over, press Ctrl + N for a new game.\n\n'\
+						'Good luck!'
+				message = tk.Message(self.pausewindow, text=message_content)
+				message.pack()
+				button = tk.Button(self.pausewindow, text='Ok', command=self.pause)
+				button.pack()
+			else:
+				if messagebox.askquestion(title='Game paused', message='The game has been paused,\n'+
 														'close this window to continue.', type='ok', icon='info'):
-				self.pause()
+					self.pause()
 		elif self.paused: # resume the game
+			if self.pausewindow:
+				self.pausewindow.destroy()
 			self.paused = False
 			self.piece_is_active = True
 			self.sounds['music.ogg'].play(loops=-1)
@@ -466,9 +498,6 @@ class Tetris():
 		Parameter:
 			event (event): a keypress event, defaulting to None
 		'''
-		down = {'Down', 's', 'S'}
-		left = {'Left', 'a', 'A'}
-		right = {'Right', 'd', 'D'}
 		if not self.piece_is_active:		# We do not want to move settled pieces
 			return
 		# Retrieve information about the active piece
@@ -480,11 +509,11 @@ class Tetris():
 		# the piece will move down, or it may be called by a button press event
 		# in which case direction is will be the name of the button
 		direction = (event and event.keysym) or 'Down'
-		if direction in down:	
+		if direction == 'Down':	
 			row += 1
-		elif direction in left:
+		elif direction == 'Left':
 			column -= 1
-		elif direction in right:
+		elif direction == 'Right':
 			column += 1
 
 		success = self.check_and_move(self.active_piece.shape, row, column, length, width)
@@ -492,7 +521,7 @@ class Tetris():
 
 		# If we're moving down and the piece is blocked by something on the row below
 		# and NOT(the feature is on and we're hovering), then settle
-		if direction in down and not success and not (self.hover and self.active_piece.hover): 
+		if direction == 'Down' and not success and not (self.hover and self.active_piece.hover): 
 			self.settle()
 
 	def settle(self):
@@ -653,9 +682,9 @@ class Tetris():
 		Parameter:
 			event (event): a keypress event, defaulting to None
 		'''
-		down = {'space'}
-		left = {'Caps_Lock'}
-		right = {'f', 'F'}
+		down = {'space', 's', 'S'}
+		left = {'a', 'A'}
+		right = {'d', 'D'}
 		if not self.piece_is_active: # We do not want to move settled pieces
 			return
 		# Retrieve information about the active piece
