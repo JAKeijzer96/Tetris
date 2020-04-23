@@ -243,13 +243,18 @@ class Tetris():
 		self.preview_canvas.grid(row=1, column=1)
 		# Set variables to their default values
 		self.score = 0
-		self.tickrate = 1000
-		self.cleared_lines = 0
-		self.level = 0
-		self.levelup = 0
-		self.max_level = 20
-		# Determine how much the game speeds up per level, currently linear progression
-		self.level_increment = self.tickrate//self.max_level
+		self.cleared_lines = 0 # number of cleared lines
+		self.level = 0 # the current level
+		self.levelup = 0 # variable to keep track of when to level up
+		self.level_tickrates = [800, 700, 600, 500, 400, # List of tickrates per level,
+										300, 250, 200, 150, 100, # based on the NES Tetris tickrates
+										80,  80,  80,  65,   65,
+										65,  50,  50,  50,   30,
+										30,  30,  30,  30,   30,
+										30,  30,  30,  30,   30,
+										15]
+		# tickrate is the amount of time in milliseconds before the piece shifts down one row	
+		self.tickrate = self.level_tickrates[self.level]
 		self.piece_is_active = False
 		self.paused = False
 		self.bag = [] # Used to randomly pick a piece from a bag without replacement
@@ -417,6 +422,16 @@ class Tetris():
 		return True
 
 	def check_and_move(self, shape, row, column, length, width):
+		'''
+		Checks whether the piece can move to the intended position,
+		moves there if it can and returns True if both check and move succeeded
+		Parameters:
+			shape (2D list): the 2D array representation of the current piece
+			row (int): the row the piece should move to
+			column (int): the column the piece should move to
+			length (int): the (vertical) length of the piece
+			width (int): the (horizontal) width of the piece
+		'''
 		# If self.check is false, the function will return false without
 		# checking (and executing) self.move
 		return self.check(shape, row, column, length, width
@@ -547,7 +562,8 @@ class Tetris():
 				self.level = self.cleared_lines//10 # level up for every 10 lines cleared
 				self.high_level = max(self.level, self.high_level)
 				self.levelup -= 10
-				self.tickrate = 1000 - self.level_increment * self.level # increase the tickrate
+				if self.level <= 30: # Don't increase tickrate past level 30
+					self.tickrate = self.level_tickrates[self.level]
 				self.level_var.set('Level:\n{}'.format(self.level))
 				self.high_level_var.set('Highest level:\n{}'.format(self.high_level))
 			elif self.audio and self.audio['x']: # if we haven't leveled up, play clear sound instead
