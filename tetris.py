@@ -99,9 +99,9 @@ class Tetris():
 													'clear.ogg',
 													'lose.ogg',
 													'levelup.ogg')}
-			except pg.error as e: # if sound files are missing, disable audio
+			except: # if sound files are missing, disable audio
 				self.audio = None
-				print(e)
+				print('No audio found. Music and sound effects will be disabled')
 			else:
 				self.audio = {'m':True, 'x':True} # if sound files are present,
 				for char in 'mMxX': # enable audio and bind keys
